@@ -16,8 +16,10 @@ def dict_to_xml(tag, d):
 
 def create_root_element(json_data):
     root_tag = list(json_data.keys())[0]
-    root_element = dict_to_xml(root_tag, json_data[root_tag])
-    return root_element
+    root = ET.Element("annotation", verified="yes")
+    root_element = dict_to_xml(root_tag, json_data)
+    root.append(root_element)
+    return root
 
 
 def annotate(
@@ -27,22 +29,19 @@ def annotate(
     label: str,
 ) -> ET.ElementTree:
     data = {
-        "annotation": {
-            "verified": "yes",
-            "folder": "Annotation",
-            "filename": path.name,
-            "path": path.as_posix(),
-            "source": {"database": "Unknown"},
-            "size": {"width": size[0], "height": size[1], "depth": 3},
-            "segmented": 0,
-            "object": {
-                "name": label,
-                "pose": "Unspecified",
-                "truncated": 0,
-                "difficult": 0,
-                "bndbox": {"xmin": bndbox[0], "ymin": bndbox[1], "xmax": bndbox[2], "ymax": bndbox[3]},
-            },
-        }
+        "folder": "Annotation",
+        "filename": path.name,
+        "path": path.as_posix(),
+        "source": {"database": "Unknown"},
+        "size": {"width": size[0], "height": size[1], "depth": 3},
+        "segmented": 0,
+        "object": {
+            "name": label,
+            "pose": "Unspecified",
+            "truncated": 0,
+            "difficult": 0,
+            "bndbox": {"xmin": bndbox[0], "ymin": bndbox[1], "xmax": bndbox[2], "ymax": bndbox[3]},
+        },
     }
     root = create_root_element(data)
     return ET.ElementTree(root)

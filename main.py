@@ -3,6 +3,7 @@ import pathlib
 
 import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 from cv2.typing import MatLike
 from rembg import remove
 from tqdm import tqdm
@@ -34,6 +35,11 @@ class DataAugmentation:
         self.base = self.value.copy()
         return self
 
+    def marge(self, x: int, y: int, w: int, h: int, base: "DataAugmentation"):
+        value = np.zeros_like(base.base)
+        value[y:h, x:w] = self.value
+        return DataAugmentation(value, base.base)
+
     def trim(self, x: int, y: int, w: int, h: int):
         self.value = self.value[y:h, x:w]
         return self
@@ -56,15 +62,27 @@ class DataAugmentation:
     def get_size(self):
         return self.value.shape[1], self.value.shape[0]
 
+    def get_mask_size(self):
+        mask = self.value[:, :, 3] == 255
+        return mask.sum()
+
     def paste(self):
-        mask = self.value[:, :, 3] < 255
+        mask = self.value[:, :, 3] == 0
         self.value[mask] = self.base[mask]
         return self
 
     def remove(self):
         self.value = remove(self.value).copy()  # type: ignore
-        mask = self.value[:, :, 3] == 255
+        mask = self.value[:, :, 3] > 150
+        self.value = np.zeros_like(self.value)
         self.value[mask] = self.base[mask]
+        return self
+
+    def one_object(self):
+        gray = cv2.cvtColor(self.value, cv2.COLOR_BGRA2GRAY)
+        contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        other = sorted(contours, key=cv2.contourArea, reverse=True)[1:]
+        self.value = cv2.drawContours(self.value, other, -1, (0, 0, 0, 0), -1)
         return self
 
     def write(self, output_path: str):
@@ -85,8 +103,12 @@ def change_base_dir(base: pathlib.Path, path: str, suffix: str) -> pathlib.Path:
     return new
 
 
-def get_area(size: tuple[int, int, int, int]):
-    return (size[2] - size[0]) * (size[3] - size[1])
+def get_area(x: int, y: int, w: int, h: int) -> int:
+    return (w - x) * (h - y)
+
+
+def get_resize(x: int, y: int, w: int, h: int, size: int) -> tuple[int, int, int, int]:
+    return x - size, y - size, w + size, h + size
 
 
 if __name__ == "__main__":
@@ -97,25 +119,39 @@ if __name__ == "__main__":
             output_annotation_path = change_base_dir(base, "output/annotation", ".xml")
             debug_path = change_base_dir(base, "debug", ".png")
 
-            data = DataAugmentation.from_path(file).remove()
-            border, size = data.get_border_size(), data.get_size()
+            data = DataAugmentation.from_path(file).remove().one_object()
+            border_size, size, mask_size = (
+                data.get_border_size(),
+                data.get_size(),
+                data.get_mask_size(),
+            )
 
-            if get_area(border) / (size[0] * size[1]) > 0.3:
-                print(f"{file} is too big, retrying...")
-                retry = debug_path.with_name(debug_path.stem + "_retry" + debug_path.suffix)
-                data.copy().add_contour().add_border().paste().write(str(retry))
-                resize = (border[0] + 10, border[1] + 10, border[2] - 10, border[3] - 10)
-                new_data = data.base_copy().trim(*resize).set().remove()
-                new_border, new_size = new_data.get_border_size(), new_data.get_size()
+            trim = get_resize(*border_size, 10)
+            data2 = data.base_copy().trim(*trim).set().remove()
+            border_size2, size2, mask_size2 = (
+                data2.get_border_size(),
+                data2.get_size(),
+                data2.get_mask_size(),
+            )
 
-                if get_area(new_border) / (new_size[0] * new_size[1]) > 0.9:
-                    print(f"{file} is too big, restore...")
-                else:
-                    data, border, size = new_data, new_border, new_size
+            if get_area(*border_size2) / (size2[0] * size2[1]) > 0.8:
+                pass
+            else:
+                print(f"{file} is too big, restore...")
+                if __debug__:
+                    retry = debug_path.with_name(debug_path.stem + "_retry" + debug_path.suffix)
+                    data.copy().add_contour().add_border().paste().write(str(retry))
+
+                data = data2.marge(*trim, data)
+                border_size, size, mask_size = (
+                    data.get_border_size(),
+                    data.get_size(),
+                    data.get_mask_size(),
+                )
 
             data.copy().write(str(output_path))
             data.copy().add_contour().add_border().paste().write(str(debug_path))
             label = pathlib.Path(file).parent.name
 
-            annotation = annotate(output_path, border, size, label)
+            annotation = annotate(output_path, border_size, size, label)
             annotation.write(str(output_annotation_path))
