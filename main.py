@@ -1,196 +1,121 @@
 import glob
-from typing import Callable
+import pathlib
 
 import cv2
 import matplotlib.pyplot as plt
-import numpy as np
 from cv2.typing import MatLike
+from rembg import remove
+from tqdm import tqdm
+
+from annotate import annotate
+
+print = tqdm.write
 
 
-class ImageProcessing:
-    def __init__(self, image: MatLike):
-        self.image = image
-        self.delete = []
-        self.keep = []
-
-    def gray(self, threshold=128):
-        return np.max(self.image, axis=2) - np.min(self.image, axis=2) < threshold
-
-    def thin(self, threshold=128):
-        return np.mean(self.image, axis=2) > threshold  # type: ignore
-
-    def color(self, threshold=128, color=0):
-        """その色のみ他の色よりも大きいかどうか"""
-        mask1 = self.image[:, :, color] - self.image[:, :, (color + 1) % 3] > threshold
-        mask2 = self.image[:, :, color] - self.image[:, :, (color + 2) % 3] > threshold
-        return mask1 & mask2
-
-    def color2(self, threshold=128, color=0):
-        """その色が大きいかどうか"""
-        return self.image[:, :, color] > threshold
-
-    def color3(self, threshold=128, color=0):
-        """その色が最大値よりもいくつか大きいかどうか"""
-        return np.max(self.image, axis=2) - self.image[:, :, color] > threshold
-
-    def blue(self, threshold=128):
-        return self.color(threshold, 0)
-
-    def green(self, threshold=128):
-        return self.color(threshold, 1)
-
-    def red(self, threshold=128):
-        return self.color(threshold, 2)
-
-    def blue2(self, threshold=128):
-        return self.color2(threshold, 0)
-
-    def green2(self, threshold=128):
-        return self.color2(threshold, 1)
-
-    def red2(self, threshold=128):
-        return self.color2(threshold, 2)
-
-    def blue3(self, threshold=128):
-        return self.color3(threshold, 0)
-
-    def green3(self, threshold=128):
-        return self.color3(threshold, 1)
-
-    def red3(self, threshold=128):
-        return self.color3(threshold, 2)
-
-
-class EdgeDetection:
-    def __init__(self, image: MatLike):
-        self.image = image
-        self.base = image.copy()
+class DataAugmentation:
+    def __init__(self, input: MatLike, base: MatLike):
+        self.value: MatLike = input
+        self.base: MatLike = base
 
     @staticmethod
-    def from_file(png_path):
-        image = cv2.imread(png_path, cv2.IMREAD_COLOR)
-        assert image is not None
-        return EdgeDetection(image)
+    def from_path(input_path: str):
+        data = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
+        if data.shape[2] == 3:
+            data = cv2.cvtColor(data, cv2.COLOR_BGR2BGRA)
+        return DataAugmentation(data, data.copy())
 
-    def set_base(self):
-        self.base = self.image.copy()
-        return self
-
-    def trim(self, threshold=255, x=0, y=0):
-        """画像をトリミングする"""
-        mask = np.all(self.image > threshold, axis=2)
-        mask = np.logical_not(mask)
-        self.image = self.image[np.ix_(mask.any(1), mask.any(0))]
-        self.image = self.image[y:-y, x:-x]
-        return self
-
-    def padding(self, x=0, y=0, color=(255, 255, 255)):
-        """周りに余白を追加する"""
-        h, w = self.image.shape[:2]
-        self.image = cv2.copyMakeBorder(self.image, y, y, x, x, cv2.BORDER_CONSTANT, value=color)
-        return self
+    def base_copy(self):
+        return DataAugmentation(self.base.copy(), self.base.copy())
 
     def copy(self):
-        return EdgeDetection(self.image.copy())
+        return DataAugmentation(self.value.copy(), self.base.copy())
 
-    def gray(self):
-        """画像をグレースケールに変換する"""
-        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
+    def set(self):
+        self.base = self.value.copy()
         return self
 
-    def color(self, keep: Callable[[ImageProcessing], np.ndarray]):
-        mask = keep(ImageProcessing(self.image))
-        self.image = np.where(mask[:, :, None], self.image, 255)
+    def trim(self, x: int, y: int, w: int, h: int):
+        self.value = self.value[y:h, x:w]
         return self
 
-    def enhance(self, color: int, n: float):
-        """画像の色を強調する"""
-        self.image[:, :, color] = np.clip(self.image[:, :, color] * n, 0, 255)
+    def add_border(self):
+        x, y, w, h = cv2.boundingRect(cv2.cvtColor(self.value, cv2.COLOR_BGRA2GRAY))
+        self.value = cv2.rectangle(self.value, (x, y), (x + w, y + h), (255, 0, 0, 255), 1)
         return self
 
-    def otsu_threshold(self):
-        _, self.image = cv2.threshold(self.image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    def add_contour(self):
+        gray = cv2.cvtColor(self.value, cv2.COLOR_BGRA2GRAY)
+        contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        self.value = cv2.drawContours(self.value, contours, -1, (0, 255, 0, 255), 1)
         return self
 
-    def gaussian_blur(self, kernel_size=5):
-        self.image = cv2.GaussianBlur(self.image, (kernel_size, kernel_size), 0)
+    def get_border_size(self):
+        x, y, w, h = cv2.boundingRect(cv2.cvtColor(self.value, cv2.COLOR_BGRA2GRAY))
+        return x, y, x + w, y + h
+
+    def get_size(self):
+        return self.value.shape[1], self.value.shape[0]
+
+    def paste(self):
+        mask = self.value[:, :, 3] < 255
+        self.value[mask] = self.base[mask]
         return self
 
-    def sobel(self):
-        sobelx = cv2.Sobel(self.image, cv2.CV_64F, 1, 0, ksize=5)
-        sobely = cv2.Sobel(self.image, cv2.CV_64F, 0, 1, ksize=5)
-        sobel_edges = cv2.magnitude(sobelx, sobely)
-        self.image = cv2.convertScaleAbs(sobel_edges)
+    def remove(self):
+        self.value = remove(self.value).copy()  # type: ignore
+        mask = self.value[:, :, 3] == 255
+        self.value[mask] = self.base[mask]
         return self
 
-    def laplacian(self):
-        laplacian = cv2.Laplacian(self.image, cv2.CV_64F)
-        self.image = cv2.convertScaleAbs(laplacian)
-        return self
-
-    def morphological_gradient(self):
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        gradient = cv2.morphologyEx(self.image, cv2.MORPH_GRADIENT, kernel)
-        self.image = cv2.convertScaleAbs(gradient)
-        return self
-
-    def canny(self, threshold1=50, threshold2=250):
-        self.image = cv2.Canny(self.image, threshold1, threshold2)
-        return self
-
-    def find_and_remove_contours(self):
-        contours, _ = cv2.findContours(self.image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        large = sorted(contours, key=lambda x: cv2.contourArea(x), reverse=True)
-        mask = np.ones(self.image.shape, dtype=np.uint8) * 255
-        mask = cv2.drawContours(mask, [large[0]], -1, (0, 0, 0), thickness=cv2.FILLED)
-        mask = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)
-        kernel = np.ones((4, 4), np.uint8)
-        mask = cv2.dilate(mask, kernel, iterations=1)
-        mask = cv2.bitwise_not(mask)
-        self.image = cv2.bitwise_and(self.base, self.base, mask=mask)
-        return self
-
-    def kernel(self, kernel_size=2):
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        self.image = cv2.dilate(self.image, kernel, iterations=1)
+    def write(self, output_path: str):
+        cv2.imwrite(output_path, self.value)
         return self
 
     def show(self):
         plt.figure(figsize=(10, 10))
-        plt.imshow(cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB))
+        plt.imshow(cv2.cvtColor(self.value, cv2.COLOR_BGRA2RGBA))
         plt.axis("off")
         plt.show()
         return self
 
 
+def change_base_dir(base: pathlib.Path, path: str, suffix: str) -> pathlib.Path:
+    new = pathlib.Path(path) / base.relative_to("input").with_suffix(suffix)
+    new.parent.mkdir(parents=True, exist_ok=True)
+    return new
+
+
+def get_area(size: tuple[int, int, int, int]):
+    return (size[2] - size[0]) * (size[3] - size[1])
+
+
 if __name__ == "__main__":
-    for file_name in glob.glob("input/*"):
-        image = EdgeDetection.from_file(file_name)
+    for dir in tqdm(glob.glob("input/*")):
+        for file in tqdm(glob.glob(f"{dir}/*.jpg")):
+            base = pathlib.Path(file)
+            output_path = change_base_dir(base, "output/image", ".png")
+            output_annotation_path = change_base_dir(base, "output/annotation", ".xml")
+            debug_path = change_base_dir(base, "debug", ".png")
 
-        # image.copy().enhance(0, 2).show()
+            data = DataAugmentation.from_path(file).remove()
+            border, size = data.get_border_size(), data.get_size()
 
-        # image.copy().trim(200).set_base().enhance(0, 1.5).canny().find_contours().show()
+            if get_area(border) / (size[0] * size[1]) > 0.3:
+                print(f"{file} is too big, retrying...")
+                retry = debug_path.with_name(debug_path.stem + "_retry" + debug_path.suffix)
+                data.copy().add_contour().add_border().paste().write(str(retry))
+                resize = (border[0] + 10, border[1] + 10, border[2] - 10, border[3] - 10)
+                new_data = data.base_copy().trim(*resize).set().remove()
+                new_border, new_size = new_data.get_border_size(), new_data.get_size()
 
-        # image.copy().canny().find_contours().show()
-        # image.copy().enhance(0, 1.5).show()
+                if get_area(new_border) / (new_size[0] * new_size[1]) > 0.9:
+                    print(f"{file} is too big, restore...")
+                else:
+                    data, border, size = new_data, new_border, new_size
 
-        # image.copy().color(lambda x: ~(x.thin(100))).show()
+            data.copy().write(str(output_path))
+            data.copy().add_contour().add_border().paste().write(str(debug_path))
+            label = pathlib.Path(file).parent.name
 
-        # image.copy().color(lambda x: (~(x.gray(55)))).show()
-
-        image.trim(200, x=80, y=80).set_base()
-        image.copy().canny(50, 200).kernel(2).find_and_remove_contours().show()
-
-        # image.copy().canny().find_contours().show()
-
-        # image.copy().gray().canny().find_contours().show()
-
-        # image.copy().gray().sobel().find_contours().show()
-
-        # image.copy().gray().laplacian().find_contours().show()
-
-        # image.copy().gray().morphological_gradient().find_contours().show()
-
-        # image.copy().gray().gaussian_blur().canny().find_contours().show()
-
-        # image.copy().gray().otsu_threshold().canny().find_contours().show()
+            annotation = annotate(output_path, border, size, label)
+            annotation.write(str(output_annotation_path))

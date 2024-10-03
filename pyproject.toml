@@ -2,4 +2,4 @@
 line-length = 120
 
 [tool.pyright]
-include = ["src", "tests", "sample"]
+typeCheckingMode = "standard"
