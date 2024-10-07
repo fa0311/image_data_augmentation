@@ -11,6 +11,7 @@ def show_images_non_block(images: list[ImageProcessor]):
         plt.subplot(1, len(images), i + 1)
         plt.imshow(cv2.cvtColor(image.value, cv2.COLOR_BGRA2RGBA))
         plt.axis("off")
+        plt.title(str(i))
     plt.show(block=False)
     return plt.close
 
@@ -30,4 +31,4 @@ def get_resize(x: int, y: int, size: int) -> tuple[int, int, int, int]:
 
 
 def get_resize2(x: int, y: int, w: int, h: int, pad: int) -> tuple[int, int, int, int]:
-    return x - pad, y - pad, w + pad, h + pad
+    return max(0, x - pad), max(0, y - pad), w + pad, h + pad
