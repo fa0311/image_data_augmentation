@@ -126,5 +126,4 @@ class ImageProcessor:
         data1 = cv2.calcHist([self.value], [0, 1, 2], None, [256, 256, 256], [0, 256, 0, 256, 0, 256])
         data2 = cv2.calcHist([other.value], [0, 1, 2], None, [256, 256, 256], [0, 256, 0, 256, 0, 256])
         value = cv2.compareHist(data1, data2, cv2.HISTCMP_CORREL)
-        print(value)
         return value

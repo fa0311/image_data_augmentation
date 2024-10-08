@@ -1,5 +1,6 @@
 import glob
 import pathlib
+import shutil
 from typing import Optional, Union
 
 from tqdm import tqdm
@@ -10,6 +11,12 @@ from lib.util import change_base_dir, get_resize, get_resize2, show_images_non_b
 
 # threshold = 0.9999996
 threshold = 0.9999
+remove = True
+default_value = True
+
+
+def print(*args, **kwargs):
+    tqdm.write(" ".join(map(str, args)), **kwargs)
 
 
 def any_compare(data: ImageProcessor, role: list[ImageProcessor]) -> bool:
@@ -25,7 +32,7 @@ def get_ichigo(base: ImageProcessor, role: list[ImageProcessor]) -> Union[ImageP
     trim = get_resize(*size, -thickness)
 
     data1 = base.copy().remove_background().one_object()
-    data2 = base.copy().trim(*trim).set().remove_background().one_object()
+    data2 = base.copy().trim(*trim).set().remove_background().one_object().marge(*trim, base)
 
     border_size1 = data1.get_border_size()
     border_size2 = data2.get_border_size()
@@ -35,29 +42,26 @@ def get_ichigo(base: ImageProcessor, role: list[ImageProcessor]) -> Union[ImageP
     trim21 = get_resize2(*border_size2, -thickness)
     trim22 = get_resize2(*border_size2, thickness)
 
-    data11 = base.copy().trim(*trim11).set().remove_background().one_object()
-    data12 = base.copy().trim(*trim12).set().remove_background().one_object()
-    data21 = base.copy().trim(*trim21).set().remove_background().one_object()
-    data22 = base.copy().trim(*trim22).set().remove_background().one_object()
+    data11 = base.copy().trim(*trim11).set().remove_background().one_object().marge(*trim11, base)
+    data12 = base.copy().trim(*trim12).set().remove_background().one_object().marge(*trim12, base)
+    data21 = base.copy().trim(*trim21).set().remove_background().one_object().marge(*trim21, base)
+    data22 = base.copy().trim(*trim22).set().remove_background().one_object().marge(*trim22, base)
 
-    all = [
-        data1,
-        data2.marge(*trim, base),
-        data11.marge(*trim11, base),
-        data12.marge(*trim12, base),
-        data21.marge(*trim21, base),
-        data22.marge(*trim22, base),
-    ]
+    all = [data1, data2, data11, data12, data21, data22]
 
     s = size[0] * size[1] // 30
     listed = filter(lambda x, s=s: x.get_mask_size() > s and any_compare(x, role), all)
     value = sorted(listed, key=lambda x: x.get_mask_size(), reverse=True)
-    if len(value) < 2:
+    if len(role) == 0:
         return list(all)
     elif data1 == value[0] and data12 in value:
         return data12
     elif data2 == value[0] and data22 in value:
         return data22
+    elif default_value:
+        return data22
+    elif len(value) < 2:
+        return list(all)
     else:
         return value[0]
 
@@ -73,8 +77,9 @@ def ask(data: list[ImageProcessor]) -> Optional[ImageProcessor]:
 
 
 if __name__ == "__main__":
-    # shutil.rmtree("output", ignore_errors=True)
-    # shutil.rmtree("debug", ignore_errors=True)
+    if remove:
+        shutil.rmtree("output", ignore_errors=True)
+        shutil.rmtree("debug", ignore_errors=True)
     role_data: list[ImageProcessor] = [ImageProcessor.from_path(x) for x in glob.glob("role/*/*.png")]  # noqa: F821
 
     for file in tqdm(glob.glob("input/*/*.JPG")):
