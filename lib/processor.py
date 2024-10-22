@@ -58,11 +58,71 @@ class ImageProcessor:
         self.value = value
         return self
 
+    def resize_axis_x(self, size: int) -> "ImageProcessor":
+        """画像をアスペクト比を保持してリサイズする"""
+        ratio = size / self.value.shape[1]
+        self.value = cv2.resize(self.value, (size, int(self.value.shape[0] * ratio)))
+        return self
+
+    def resize_axis_y(self, size: int) -> "ImageProcessor":
+        """画像をアスペクト比を保持してリサイズする"""
+        ratio = size / self.value.shape[0]
+        self.value = cv2.resize(self.value, (int(self.value.shape[1] * ratio), size))
+        return self
+
     def add_border(self) -> "ImageProcessor":
         """画像に境界線を追加する"""
         x, y, w, h = cv2.boundingRect(cv2.cvtColor(self.value, cv2.COLOR_BGRA2GRAY))
         thickness = self.value.shape[0] // 500
         self.value = cv2.rectangle(self.value, (x, y), (x + w, y + h), (255, 0, 0, 255), thickness)
+        return self
+
+    def set_base_color(self, color: tuple[int, int, int, int]) -> "ImageProcessor":
+        """画像の背景色を変更する"""
+        self.base = np.zeros_like(self.value)
+        self.base[:, :] = color
+        return self
+
+    # data-augmentation
+
+    def rotate(self, angle: float) -> "ImageProcessor":
+        """画像を回転する"""
+        center = (self.value.shape[1] // 2, self.value.shape[0] // 2)
+        matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+        self.value = cv2.warpAffine(self.value, matrix, (self.value.shape[1], self.value.shape[0]))
+        return self
+
+    def flip(self, flip_code: int) -> "ImageProcessor":
+        """画像を反転する"""
+        self.value = cv2.flip(self.value, flip_code)
+        return self
+
+    def contrast(self, value: float) -> "ImageProcessor":
+        """画像のコントラストを変更する"""
+        mean = np.mean(self.value)
+        self.value = np.clip((self.value - mean) * value + mean, 0, 255).astype(np.uint8)
+        return self
+
+    def blur(self, size: int) -> "ImageProcessor":
+        """画像をぼかす"""
+        self.value = cv2.GaussianBlur(self.value, (size, size), 0)
+        return self
+
+    def sharpen(self) -> "ImageProcessor":
+        """画像をシャープにする"""
+        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        self.value = cv2.filter2D(self.value, -1, kernel)
+        return self
+
+    def noise(self, value: int) -> "ImageProcessor":
+        """画像にノイズを追加する"""
+        noise = np.random.normal(0, value, self.value.shape)
+        self.value = np.clip(self.value + noise, 0, 255).astype(np.uint8)
+        return self
+
+    def gamma(self, gamma: float) -> "ImageProcessor":
+        """画像のガンマ補正を行う"""
+        self.value = np.clip(255 * (self.value / 255) ** (1 / gamma), 0, 255).astype(np.uint8)
         return self
 
     def add_contour(self) -> "ImageProcessor":
