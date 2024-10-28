@@ -2,23 +2,20 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
-def dict_to_xml(tag, d):
-    elem = ET.Element(tag)
+def dict_to_xml(pearent, d):
     for key, val in d.items():
         if isinstance(val, dict):
-            child = dict_to_xml(key, val)
-            elem.append(child)
+            elem = ET.Element(key)
+            dict_to_xml(elem, val)
+            pearent.append(elem)
         else:
-            child = ET.SubElement(elem, key)
+            child = ET.SubElement(pearent, key)
             child.text = str(val)
-    return elem
 
 
 def create_root_element(json_data):
-    root_tag = list(json_data.keys())[0]
     root = ET.Element("annotation", verified="yes")
-    root_element = dict_to_xml(root_tag, json_data)
-    root.append(root_element)
+    dict_to_xml(root, json_data)
     return root
 
 

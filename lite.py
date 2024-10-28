@@ -4,7 +4,6 @@ import shutil
 
 from tqdm import tqdm
 
-from annotate import annotate
 from lib.processor import ImageProcessor
 from lib.util import change_base_dir
 
@@ -25,6 +24,6 @@ if __name__ == "__main__":
         border_size, size = data.get_border_size(), data.get_size()
         data.copy().write(str(output_path))
         data.copy().add_contour().add_border().paste().write(str(debug_path))
-        label = pathlib.Path(file).parent.name
-        annotation = annotate(output_path, border_size, size, label)
-        annotation.write(str(output_annotation_path))
+        # label = pathlib.Path(file).parent.name
+        # annotation = annotate(output_path, border_size, size, label)
+        # annotation.write(str(output_annotation_path))

@@ -82,10 +82,10 @@ if __name__ == "__main__":
 
     for file in tqdm(glob.glob("input/*/*.JPG")):
         base_path = pathlib.Path(file)
-        output_path = change_base_dir(base_path, "output1/image", ".png")
-        debug_path = change_base_dir(base_path, "output1/debug", ".png")
-        role_path = change_base_dir(base_path, "output1/role", ".png")
-        error_path = change_base_dir(base_path, "output1/error", ".png")
+        output_path = change_base_dir(base_path, "input", "output1/image", ".png")
+        debug_path = change_base_dir(base_path, "input", "output1/debug", ".png")
+        role_path = change_base_dir(base_path, "input", "output1/role", ".png")
+        error_path = change_base_dir(base_path, "input", "output1/error", ".png")
 
         if output_path.exists():
             continue

@@ -16,8 +16,8 @@ def show_images_non_block(images: list[ImageProcessor]):
     return plt.close
 
 
-def change_base_dir(base: pathlib.Path, path: str, suffix: str) -> pathlib.Path:
-    new = pathlib.Path(path).joinpath(base.relative_to("input").with_suffix(suffix))
+def change_base_dir(base: pathlib.Path, input: str, path: str, suffix: str) -> pathlib.Path:
+    new = pathlib.Path(path).joinpath(base.relative_to(input).with_suffix(suffix))
     new.parent.mkdir(parents=True, exist_ok=True)
     return new
 
