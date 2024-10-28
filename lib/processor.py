@@ -2,12 +2,6 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from cv2.typing import MatLike
-from rembg import remove
-from tqdm import tqdm
-
-
-def print(*args, **kwargs):
-    tqdm.write(" ".join(map(str, args)), **kwargs)
 
 
 class ImageProcessor:
@@ -28,6 +22,14 @@ class ImageProcessor:
         if data.shape[2] == 3:
             data = cv2.cvtColor(data, cv2.COLOR_BGR2BGRA)
         return ImageProcessor(data, data.copy())
+
+    @staticmethod
+    def from_path_without_base(input_path: str) -> "ImageProcessor":
+        """ファイルのパスから画像を読み込む"""
+        data = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
+        if data.shape[2] == 3:
+            data = cv2.cvtColor(data, cv2.COLOR_BGR2BGRA)
+        return ImageProcessor(data, np.zeros_like(data))
 
     def copy(self) -> "ImageProcessor":
         """データをコピーする"""
@@ -83,8 +85,6 @@ class ImageProcessor:
         self.base[:, :] = color
         return self
 
-    # data-augmentation
-
     def rotate(self, angle: float) -> "ImageProcessor":
         """画像を回転する"""
         center = (self.value.shape[1] // 2, self.value.shape[0] // 2)
@@ -97,32 +97,19 @@ class ImageProcessor:
         self.value = cv2.flip(self.value, flip_code)
         return self
 
-    def contrast(self, value: float) -> "ImageProcessor":
-        """画像のコントラストを変更する"""
-        mean = np.mean(self.value)
-        self.value = np.clip((self.value - mean) * value + mean, 0, 255).astype(np.uint8)
-        return self
+    def hsv(self, hue: int, saturation: float, value: float) -> "ImageProcessor":
+        """画像の色相、彩度、明度を変更する"""
+        mask = self.value[:, :, 3] == 255
 
-    def blur(self, size: int) -> "ImageProcessor":
-        """画像をぼかす"""
-        self.value = cv2.GaussianBlur(self.value, (size, size), 0)
-        return self
-
-    def sharpen(self) -> "ImageProcessor":
-        """画像をシャープにする"""
-        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-        self.value = cv2.filter2D(self.value, -1, kernel)
-        return self
-
-    def noise(self, value: int) -> "ImageProcessor":
-        """画像にノイズを追加する"""
-        noise = np.random.normal(0, value, self.value.shape)
-        self.value = np.clip(self.value + noise, 0, 255).astype(np.uint8)
-        return self
-
-    def gamma(self, gamma: float) -> "ImageProcessor":
-        """画像のガンマ補正を行う"""
-        self.value = np.clip(255 * (self.value / 255) ** (1 / gamma), 0, 255).astype(np.uint8)
+        hsv = cv2.cvtColor(self.value, cv2.COLOR_BGRA2BGR)
+        hsv = cv2.cvtColor(hsv, cv2.COLOR_BGR2HSV).astype(np.int16)
+        n_hue = hue + 180 if hue < 0 else hue
+        hsv[:, :, 0] = (hsv[:, :, 0] + n_hue) % 180
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
+        hsv[:, :, 2] = np.clip(hsv[:, :, 2] * value, 0, 255)
+        hsv = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+        self.value = np.zeros_like(self.value)
+        self.value[mask] = cv2.cvtColor(hsv, cv2.COLOR_BGR2BGRA)[mask]
         return self
 
     def add_contour(self) -> "ImageProcessor":
@@ -153,13 +140,13 @@ class ImageProcessor:
         self.value[mask] = self.base[mask]
         return self
 
-    def remove_background(self) -> "ImageProcessor":
-        """画像の背景を透過する"""
-        self.value = remove(self.value).copy()  # type: ignore
-        mask = self.value[:, :, 3] > 150
-        self.value = np.zeros_like(self.value)
-        self.value[mask] = self.base[mask]
-        return self
+    # def remove_background(self) -> "ImageProcessor":
+    #     """画像の背景を透過する"""
+    #     self.value = remove(self.value).copy()  # type: ignore
+    #     mask = self.value[:, :, 3] > 150
+    #     self.value = np.zeros_like(self.value)
+    #     self.value[mask] = self.base[mask]
+    #     return self
 
     def one_object(self) -> "ImageProcessor":
         """画像の一番大きいオブジェクト以外を削除する"""
