@@ -11,7 +11,7 @@ from lib.annotate import annotate
 from lib.processor import ImageProcessor
 
 OUTPUT_DIR = "output"
-OUTPUT_EXT = ".png"
+OUTPUT_EXT = ".jpg"
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
 OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
     for label, path in tqdm(conf.items(), desc="Processing", leave=False):
-        for file in tqdm(glob.glob(path), desc=label, leave=False):
+        for file in tqdm(glob.glob(path)[:5], desc=label, leave=False):
             if file not in ignore_flatten:
                 filename, ext = os.path.splitext(os.path.basename(file))
                 base_data = ImageProcessor.from_path_without_base(file)
@@ -67,7 +67,8 @@ if __name__ == "__main__":
                     data.resize_axis_x(512).set_base_color(ramdom_color())
                     border_size, size = data.get_border_size(), data.get_size()
                     data.paste().write(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}")
-                    annotated = annotate(Path(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}"), border_size, size, label)
+                    path_anno = f"{OUTPUT_ANNOTATION}/{filename}_{i}{OUTPUT_EXT}"
+                    annotated = annotate(Path(path_anno), border_size, size, label)
                     annotated.write(f"{OUTPUT_ANNOTATION}/{filename}_{i}.xml")
 
     for dir in ignore.values():
@@ -78,13 +79,13 @@ if __name__ == "__main__":
             data = ImageProcessor.from_path_without_base(str(from_path))
             data.copy().resize_axis_x(512).write(str(to_path))
 
-    with open(OUTPUT_LABELS, "a+") as f:
+    with open(OUTPUT_LABELS, "w") as f:
         for label in conf.keys():
             f.write(f"{label}\n")
 
     for path_name in IMAGESET_FILES:
         path = Path(f"{OUTPUT_IMAGESET}/{path_name}")
         path.touch(exist_ok=True)
-        with open(path, "w+") as f:
+        with open(path, "w") as f:
             for file in glob.glob(f"{OUTPUT_JPEG}/*{OUTPUT_EXT}"):
                 f.write(f"{Path(file).stem}\n")
