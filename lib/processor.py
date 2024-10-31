@@ -99,17 +99,15 @@ class ImageProcessor:
 
     def hsv(self, hue: int, saturation: float, value: float) -> "ImageProcessor":
         """画像の色相、彩度、明度を変更する"""
-        mask = self.value[:, :, 3] == 255
-
+        alpha = self.value[:, :, 3]
         hsv = cv2.cvtColor(self.value, cv2.COLOR_BGRA2BGR)
         hsv = cv2.cvtColor(hsv, cv2.COLOR_BGR2HSV).astype(np.int16)
-        n_hue = hue + 180 if hue < 0 else hue
-        hsv[:, :, 0] = (hsv[:, :, 0] + n_hue) % 180
+        hsv[:, :, 0] = (hsv[:, :, 0] + hue) % 180
         hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
         hsv[:, :, 2] = np.clip(hsv[:, :, 2] * value, 0, 255)
         hsv = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-        self.value = np.zeros_like(self.value)
-        self.value[mask] = cv2.cvtColor(hsv, cv2.COLOR_BGR2BGRA)[mask]
+        self.value = cv2.cvtColor(hsv, cv2.COLOR_BGR2BGRA)
+        self.value[:, :, 3] = alpha
         return self
 
     def add_contour(self) -> "ImageProcessor":
