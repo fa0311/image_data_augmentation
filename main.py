@@ -27,7 +27,7 @@ def data_augmentation(base: ImageProcessor) -> list[ImageProcessor]:
         data = base.copy()
         data.rotate(random.randint(0, 360))
         data.flip(random.randint(-1, 1))
-        data.hsv(random.randint(-5, 5), random.uniform(0.9, 1.1), random.uniform(0.9, 1.1))
+        data.hsv(random.randint(-5, 5), random.uniform(0.9, 1.5), random.uniform(0.8, 1.5))
 
         res.append(data.copy())
     return res
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_JPEG, exist_ok=True)
     os.makedirs(OUTPUT_ANNOTATION, exist_ok=True)
     os.makedirs(OUTPUT_IMAGESET, exist_ok=True)
+    os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
     for label, path in tqdm(conf.items(), desc="Processing", leave=False):
         for file in tqdm(glob.glob(path), desc=label, leave=False):
@@ -69,7 +70,7 @@ if __name__ == "__main__":
                     annotated = annotate(Path(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}"), border_size, size, label)
                     annotated.write(f"{OUTPUT_ANNOTATION}/{filename}_{i}.xml")
 
-    for dir in ignore:
+    for dir in ignore.values():
         for file in dir:
             filename, ext = os.path.splitext(os.path.basename(file))
             from_path = Path(file)
@@ -77,13 +78,13 @@ if __name__ == "__main__":
             data = ImageProcessor.from_path_without_base(str(from_path))
             data.copy().resize_axis_x(512).write(str(to_path))
 
-    with open(OUTPUT_LABELS, "a") as f:
+    with open(OUTPUT_LABELS, "a+") as f:
         for label in conf.keys():
             f.write(f"{label}\n")
 
     for path_name in IMAGESET_FILES:
         path = Path(f"{OUTPUT_IMAGESET}/{path_name}")
         path.touch(exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w+") as f:
             for file in glob.glob(f"{OUTPUT_JPEG}/*{OUTPUT_EXT}"):
                 f.write(f"{Path(file).stem}\n")
