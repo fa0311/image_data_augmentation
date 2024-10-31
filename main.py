@@ -58,7 +58,7 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
     for label, path in tqdm(conf.items(), desc="Processing", leave=False):
-        for file in tqdm(glob.glob(path)[:5], desc=label, leave=False):
+        for file in tqdm(glob.glob(path), desc=label, leave=False):
             if file not in ignore_flatten:
                 filename, ext = os.path.splitext(os.path.basename(file))
                 base_data = ImageProcessor.from_path_without_base(file)
