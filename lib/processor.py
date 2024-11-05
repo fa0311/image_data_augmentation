@@ -31,6 +31,10 @@ class ImageProcessor:
             data = cv2.cvtColor(data, cv2.COLOR_BGR2BGRA)
         return ImageProcessor(data, np.zeros_like(data))
 
+    @staticmethod
+    def from_without_base(size: tuple[int, int]) -> "ImageProcessor":
+        return ImageProcessor(np.zeros((*size, 4), np.uint8), np.zeros((*size, 4), np.uint8))
+
     def copy(self) -> "ImageProcessor":
         """データをコピーする"""
         return ImageProcessor(self.value.copy(), self.base.copy())
@@ -57,6 +61,14 @@ class ImageProcessor:
         value[size:-size, size:-size] = cv2.resize(
             self.value, (self.value.shape[1] - 2 * size, self.value.shape[0] - 2 * size)
         )
+        self.value = value
+        return self
+
+    def add_margin(self, margin: tuple[int, int, int, int]) -> "ImageProcessor":
+        """画像に余白を追加する"""
+        top, right, bottom, left = margin
+        value = np.zeros((self.value.shape[0] + top + bottom, self.value.shape[1] + left + right, 4), np.uint8)
+        value[top:-bottom, left:-right] = self.value
         self.value = value
         return self
 
@@ -107,6 +119,24 @@ class ImageProcessor:
         hsv[:, :, 2] = np.clip(hsv[:, :, 2] * value, 0, 255)
         hsv = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
         self.value = cv2.cvtColor(hsv, cv2.COLOR_BGR2BGRA)
+        self.value[:, :, 3] = alpha
+        return self
+
+    # 輪郭の付近をぼかす
+    def blur_contour(self) -> "ImageProcessor":
+        """画像の輪郭の付近をぼかす"""
+        alpha_channel = self.value[:, :, 3]
+        _, mask = cv2.threshold(alpha_channel, 1, 255, cv2.THRESH_BINARY)
+        dilated_mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
+        blurred_image = cv2.GaussianBlur(self.value[:, :, :3], (5, 5), 0)
+        self.value[:, :, :3] = np.where(dilated_mask[:, :, None] == 255, blurred_image, self.value[:, :, :3])
+        return self
+
+    def remove_noise(self) -> "ImageProcessor":
+        alpha = self.value[:, :, 3]
+        edges = cv2.Canny(alpha, 100, 200)
+        dilated_edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+        alpha[(dilated_edges > 0)] = 0
         self.value[:, :, 3] = alpha
         return self
 

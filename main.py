@@ -12,6 +12,7 @@ from lib.processor import ImageProcessor
 
 OUTPUT_DIR = "output"
 OUTPUT_EXT = ".jpg"
+OUTPUT_SIZE = 512
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
 OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
@@ -28,8 +29,20 @@ def data_augmentation(base: ImageProcessor) -> list[ImageProcessor]:
         data.rotate(random.randint(0, 360))
         data.flip(random.randint(-1, 1))
         data.hsv(random.randint(-5, 5), random.uniform(0.9, 1.5), random.uniform(0.8, 1.5))
+        res.append(data)
+    return res
 
-        res.append(data.copy())
+
+def random_resize(base: ImageProcessor, size: int) -> ImageProcessor:
+    base.trim(*base.get_border_size())
+
+    source_x, source_y = base.get_size()
+    rand_size = random.randint(200, size - 100)
+    base.resize_axis_x(rand_size) if source_x > source_y else base.resize_axis_y(rand_size)
+
+    new_x, new_y = base.get_size()
+    top_margin, right_margin = random.randint(1, size - new_y - 1), random.randint(1, size - new_x - 1)
+    res = base.add_margin((top_margin, right_margin, size - new_y - top_margin, size - new_x - right_margin))
     return res
 
 
@@ -64,11 +77,11 @@ if __name__ == "__main__":
                 base_data = ImageProcessor.from_path_without_base(file)
                 augmentation = data_augmentation(base_data)
                 for i, data in enumerate(augmentation):
-                    data.resize_axis_x(512).set_base_color(ramdom_color())
+                    random_resize(data.remove_noise(), OUTPUT_SIZE).set_base_color(ramdom_color())
                     border_size, size = data.get_border_size(), data.get_size()
                     data.paste().write(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}")
                     path_anno = f"{OUTPUT_ANNOTATION}/{filename}_{i}{OUTPUT_EXT}"
-                    annotated = annotate(Path(path_anno), border_size, size, label)
+                    annotated = annotate(Path(path_anno), border_size, (OUTPUT_SIZE, OUTPUT_SIZE), label)
                     annotated.write(f"{OUTPUT_ANNOTATION}/{filename}_{i}.xml")
 
     for dir in ignore.values():
