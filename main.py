@@ -86,12 +86,11 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IMAGESET, exist_ok=True)
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
-    for label, path in tqdm(conf.items(), desc="Processing", leave=False):
-        files = glob.glob(path)
-        file_list = [(file, label) for file in files if file not in ignore_flatten]
-        max_workers = ceil((os.cpu_count() or 1) / 4)
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            list(tqdm(executor.map(process_file, file_list), total=len(file_list), desc="Files", leave=False))
+    file_list = [[(x, label) for x in glob.glob(path) if x not in ignore_flatten] for label, path in conf.items()]
+    files = flatten(file_list)
+    max_workers = ceil((os.cpu_count() or 1) / 4)
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
 
     for dir in ignore.values():
         for file in dir:
