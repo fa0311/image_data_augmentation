@@ -3,6 +3,8 @@ import json
 import os
 import random
 import shutil
+from concurrent.futures import ProcessPoolExecutor
+from math import ceil
 from pathlib import Path
 
 from tqdm import tqdm
@@ -54,6 +56,20 @@ def flatten(data):
     return [item for sublist in data for item in sublist]
 
 
+def process_file(args):
+    file, label = args
+    filename, ext = os.path.splitext(os.path.basename(file))
+    base_data = ImageProcessor.from_path_without_base(file)
+    augmentation = data_augmentation(base_data)
+    for i, data in enumerate(augmentation):
+        random_resize(data.remove_noise(), OUTPUT_SIZE).set_base_color(ramdom_color())
+        border_size, _ = data.get_border_size(), data.get_size()
+        data.paste().write(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}")
+        path_anno = f"{OUTPUT_ANNOTATION}/{filename}_{i}{OUTPUT_EXT}"
+        annotated = annotate(Path(path_anno), border_size, (OUTPUT_SIZE, OUTPUT_SIZE), label)
+        annotated.write(f"{OUTPUT_ANNOTATION}/{filename}_{i}.xml")
+
+
 if __name__ == "__main__":
     with open("input.json") as f:
         conf: dict = json.load(f)
@@ -71,18 +87,11 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
     for label, path in tqdm(conf.items(), desc="Processing", leave=False):
-        for file in tqdm(glob.glob(path), desc=label, leave=False):
-            if file not in ignore_flatten:
-                filename, ext = os.path.splitext(os.path.basename(file))
-                base_data = ImageProcessor.from_path_without_base(file)
-                augmentation = data_augmentation(base_data)
-                for i, data in enumerate(augmentation):
-                    random_resize(data.remove_noise(), OUTPUT_SIZE).set_base_color(ramdom_color())
-                    border_size, size = data.get_border_size(), data.get_size()
-                    data.paste().write(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}")
-                    path_anno = f"{OUTPUT_ANNOTATION}/{filename}_{i}{OUTPUT_EXT}"
-                    annotated = annotate(Path(path_anno), border_size, (OUTPUT_SIZE, OUTPUT_SIZE), label)
-                    annotated.write(f"{OUTPUT_ANNOTATION}/{filename}_{i}.xml")
+        files = glob.glob(path)
+        file_list = [(file, label) for file in files if file not in ignore_flatten]
+        max_workers = ceil((os.cpu_count() or 1) / 4)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            list(tqdm(executor.map(process_file, file_list), total=len(file_list), desc="Files", leave=False))
 
     for dir in ignore.values():
         for file in dir:
