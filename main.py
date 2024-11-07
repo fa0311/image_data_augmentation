@@ -4,7 +4,6 @@ import os
 import random
 import shutil
 from concurrent.futures import ProcessPoolExecutor
-from math import ceil
 from pathlib import Path
 
 from tqdm import tqdm
@@ -88,8 +87,7 @@ if __name__ == "__main__":
 
     file_list = [[(x, label) for x in glob.glob(path) if x not in ignore_flatten] for label, path in conf.items()]
     files = flatten(file_list)
-    max_workers = ceil((os.cpu_count() or 1) / 4)
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    with ProcessPoolExecutor() as executor:
         list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
 
     for dir in ignore.values():
