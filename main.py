@@ -20,7 +20,8 @@ OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
 OUTPUT_IMAGESET = f"{OUTPUT_DIR}/ImageSets/Main"
 OUTPUT_IGNORE = f"{OUTPUT_DIR}/ignore"
 OUTPUT_LABELS = f"{OUTPUT_DIR}/labels.txt"
-IMAGESET_FILES = ["test.txt", "train.txt", "trainval.txt", "val.txt"]
+IMAGESET_TRAIN_FILES = f"{OUTPUT_IMAGESET}/trainval.txt"
+IMAGESET_TEST_FILES = f"{OUTPUT_IMAGESET}/test.txt"
 
 
 def data_augmentation(base: ImageProcessor) -> list[ImageProcessor]:
@@ -62,19 +63,24 @@ def process_file(args):
     augmentation = data_augmentation(base_data)
     for i, data in enumerate(augmentation):
         random_resize(data.remove_noise(), OUTPUT_SIZE).set_base_color(ramdom_color())
-        border_size, _ = data.get_border_size(), data.get_size()
-        data.paste().write(f"{OUTPUT_JPEG}/{filename}_{i}{OUTPUT_EXT}")
-        path_anno = f"{OUTPUT_ANNOTATION}/{filename}_{i}{OUTPUT_EXT}"
-        annotated = annotate(Path(path_anno), border_size, (OUTPUT_SIZE, OUTPUT_SIZE), label)
-        annotated.write(f"{OUTPUT_ANNOTATION}/{filename}_{i}.xml")
+        annotate_file(data, label, f"{filename}_{i}")
+
+
+def annotate_file(data: ImageProcessor, label: str, filename: str):
+    border_size, _ = data.get_border_size(), data.get_size()
+    data.paste().write(f"{OUTPUT_JPEG}/{filename}{OUTPUT_EXT}")
+    path_anno = f"{OUTPUT_ANNOTATION}/{filename}{OUTPUT_EXT}"
+    annotated = annotate(Path(path_anno), border_size, (OUTPUT_SIZE, OUTPUT_SIZE), label)
+    annotated.write(f"{OUTPUT_ANNOTATION}/{filename}.xml")
 
 
 if __name__ == "__main__":
     with open("input.json") as f:
-        conf: dict = json.load(f)
+        load: dict[str, dict[str, str]] = json.load(f)
+    input = {k: v["input"] for k, v in load.items()}
+    original = {k: v["original"] for k, v in load.items()}
 
-    ignore = {label: random.sample(glob.glob(path), 5) for label, path in conf.items()}
-    ignore_flatten = flatten(ignore.values())
+    ignore = {label: random.sample(glob.glob(path), 5) for label, path in input.items()}
 
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
@@ -85,26 +91,31 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IMAGESET, exist_ok=True)
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
-    file_list = [[(x, label) for x in glob.glob(path) if x not in ignore_flatten] for label, path in conf.items()]
+    file_list = [[(x, label) for x in glob.glob(path) if x not in ignore[label]] for label, path in input.items()]
     files = flatten(file_list)
     with ProcessPoolExecutor() as executor:
         list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
 
-    for dir in ignore.values():
-        for file in dir:
-            filename, ext = os.path.splitext(os.path.basename(file))
-            from_path = Path(file)
-            to_path = Path(f"{OUTPUT_IGNORE}/{filename}{OUTPUT_EXT}")
-            data = ImageProcessor.from_path_without_base(str(from_path))
-            data.copy().resize_axis_x(512).write(str(to_path))
+    Path(IMAGESET_TRAIN_FILES).touch(exist_ok=True)
+    with open(IMAGESET_TRAIN_FILES, "w") as f:
+        for file in files:
+            f.write(f"{Path(file[0]).stem}\n")
 
+    Path(OUTPUT_LABELS).touch(exist_ok=True)
     with open(OUTPUT_LABELS, "w") as f:
-        for label in conf.keys():
+        for label in input.keys():
             f.write(f"{label}\n")
 
-    for path_name in IMAGESET_FILES:
-        path = Path(f"{OUTPUT_IMAGESET}/{path_name}")
-        path.touch(exist_ok=True)
-        with open(path, "w") as f:
-            for file in glob.glob(f"{OUTPUT_JPEG}/*{OUTPUT_EXT}"):
-                f.write(f"{Path(file).stem}\n")
+    Path(IMAGESET_TEST_FILES).touch(exist_ok=True)
+    with open(IMAGESET_TEST_FILES, "w") as f:
+        for label, dir in ignore.items():
+            files = [Path(x) for x in glob.glob(original[label])]
+            for file in dir:
+                filename, ext = os.path.splitext(os.path.basename(file))
+                base = [x for x in files if x.stem.lower() == filename.lower()][0]
+                data = ImageProcessor.from_path_base(file, str(base))
+                source_x, source_y = data.get_size()
+                data.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else data.resize_axis_y(OUTPUT_SIZE, True)
+                annotate_file(data, label, filename)
+                data.write(f"{OUTPUT_IGNORE}/{filename}{OUTPUT_EXT}")
+                f.write(f"{filename}\n")

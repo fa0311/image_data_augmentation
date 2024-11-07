@@ -32,6 +32,17 @@ class ImageProcessor:
         return ImageProcessor(data, np.zeros_like(data))
 
     @staticmethod
+    def from_path_base(input_path: str, base_path: str) -> "ImageProcessor":
+        """ファイルのパスから画像を読み込む"""
+        data = cv2.imread(input_path, cv2.IMREAD_UNCHANGED)
+        if data.shape[2] == 3:
+            data = cv2.cvtColor(data, cv2.COLOR_BGR2BGRA)
+        base = cv2.imread(base_path, cv2.IMREAD_UNCHANGED)
+        if base.shape[2] == 3:
+            base = cv2.cvtColor(base, cv2.COLOR_BGR2BGRA)
+        return ImageProcessor(data, base)
+
+    @staticmethod
     def from_without_base(size: tuple[int, int]) -> "ImageProcessor":
         return ImageProcessor(np.zeros((*size, 4), np.uint8), np.zeros((*size, 4), np.uint8))
 
@@ -72,16 +83,20 @@ class ImageProcessor:
         self.value = value
         return self
 
-    def resize_axis_x(self, size: int) -> "ImageProcessor":
+    def resize_axis_x(self, size: int, base: bool = False) -> "ImageProcessor":
         """画像をアスペクト比を保持してリサイズする"""
         ratio = size / self.value.shape[1]
         self.value = cv2.resize(self.value, (size, int(self.value.shape[0] * ratio)))
+        if base:
+            self.base = cv2.resize(self.base, (size, int(self.base.shape[0] * ratio)))
         return self
 
-    def resize_axis_y(self, size: int) -> "ImageProcessor":
+    def resize_axis_y(self, size: int, base: bool = False) -> "ImageProcessor":
         """画像をアスペクト比を保持してリサイズする"""
         ratio = size / self.value.shape[0]
         self.value = cv2.resize(self.value, (int(self.value.shape[1] * ratio), size))
+        if base:
+            self.base = cv2.resize(self.base, (int(self.base.shape[1] * ratio), size))
         return self
 
     def add_border(self) -> "ImageProcessor":
