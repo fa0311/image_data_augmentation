@@ -14,6 +14,8 @@ from lib.processor import ImageProcessor
 OUTPUT_DIR = "output"
 OUTPUT_EXT = ".jpg"
 OUTPUT_SIZE = 512
+OUTPUT_COUNT = 4
+MAX_WORKERS = None
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
 OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
@@ -24,9 +26,9 @@ IMAGESET_TRAIN_FILES = f"{OUTPUT_IMAGESET}/trainval.txt"
 IMAGESET_TEST_FILES = f"{OUTPUT_IMAGESET}/test.txt"
 
 
-def data_augmentation(base: ImageProcessor) -> list[ImageProcessor]:
+def data_augmentation(base: ImageProcessor, count: int) -> list[ImageProcessor]:
     res = []
-    for i in range(4):
+    for i in range(count):
         data = base.copy()
         data.rotate(random.randint(0, 360))
         data.flip(random.randint(-1, 1))
@@ -60,10 +62,11 @@ def process_file(args):
     file, label = args
     filename, ext = os.path.splitext(os.path.basename(file))
     base_data = ImageProcessor.from_path_without_base(file)
-    augmentation = data_augmentation(base_data)
+    augmentation = data_augmentation(base_data, OUTPUT_COUNT)
     for i, data in enumerate(augmentation):
         random_resize(data.remove_noise(), OUTPUT_SIZE).set_base_color(ramdom_color())
         annotate_file(data, label, f"{filename}_{i}")
+    return [f"{filename}_{i}" for i in range(OUTPUT_COUNT)]
 
 
 def annotate_file(data: ImageProcessor, label: str, filename: str):
@@ -93,13 +96,13 @@ if __name__ == "__main__":
 
     file_list = [[(x, label) for x in glob.glob(path) if x not in ignore[label]] for label, path in input.items()]
     files = flatten(file_list)
-    with ProcessPoolExecutor() as executor:
-        list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        output = list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
 
     Path(IMAGESET_TRAIN_FILES).touch(exist_ok=True)
     with open(IMAGESET_TRAIN_FILES, "w") as f:
-        for file in files:
-            f.write(f"{Path(file[0]).stem}\n")
+        for file in flatten(output):
+            f.write(f"{file}\n")
 
     Path(OUTPUT_LABELS).touch(exist_ok=True)
     with open(OUTPUT_LABELS, "w") as f:
