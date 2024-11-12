@@ -87,6 +87,17 @@ class ImageProcessor:
         self.value = value
         return self
 
+    def square(self, base: bool = False) -> "ImageProcessor":
+        size = max(self.value.shape[0], self.value.shape[1])
+        value = np.zeros((size, size, 4), np.uint8)
+        value[: self.value.shape[0], : self.value.shape[1]] = self.value
+        self.value = value
+        if base:
+            value = np.zeros((size, size, 4), np.uint8)
+            value[: self.base.shape[0], : self.base.shape[1]] = self.base
+            self.base = value
+        return self
+
     def resize_axis_x(self, size: int, base: bool = False) -> "ImageProcessor":
         """画像をアスペクト比を保持してリサイズする"""
         ratio = size / self.value.shape[1]

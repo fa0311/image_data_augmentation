@@ -43,7 +43,7 @@ def random_resize(base: ImageProcessor, size: int) -> ImageProcessor:
     base.trim(*base.get_border_size())
 
     source_x, source_y = base.get_size()
-    rand_size = random.randint(200, size - 100)
+    rand_size = random.randint(50, size - 50)
     base.resize_axis_x(rand_size) if source_x > source_y else base.resize_axis_y(rand_size)
 
     new_x, new_y = base.get_size()
@@ -126,6 +126,12 @@ if __name__ == "__main__":
                 data = ImageProcessor.from_path_base(file, str(base))
                 source_x, source_y = data.get_size()
                 data.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else data.resize_axis_y(OUTPUT_SIZE, True)
+                data.square(base=True)
+
+                copy = data.copy()
+                copy.set_base(cv2.cvtColor(NoiseImage().generate(N=512, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
+                copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
+
                 annotate_file(data, label, filename)
                 data.write(f"{OUTPUT_IGNORE}/{filename}{OUTPUT_EXT}")
                 f.write(f"{filename}\n")
