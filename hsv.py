@@ -2,18 +2,28 @@ import glob
 import json
 import os
 import shutil
-from itertools import product
+
+import cv2
+import matplotlib.pyplot as plt
 
 from lib.processor import ImageProcessor
 
 OUTPUT_DIR = "output"
 
 
-# 少数対応のrangeを作成
 def frange(start, stop, step):
     while start < stop:
         yield round(start, 1)
         start += step
+
+
+def frange2(count, start, end=None):
+    end = end or abs(start)
+    step = (end - start) / (count - 1)
+    while count > 0:
+        yield round(start, 1)
+        start += step
+        count -= 1
 
 
 def get_name(i: int):
@@ -28,34 +38,16 @@ if __name__ == "__main__":
         shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    img = glob.glob(list(conf.values())[0])[0]
+    img = glob.glob(list(conf.values())[0]["input"])[0]
     data = ImageProcessor.from_path_without_base(img)
 
-    matrix = [
-        (-15, 15, 1),
-        (0.5, 1.5, 0.1),
-        (0.5, 1.5, 0.1),
-    ]
-
-    # matrix = [
-    #     (-5, 5, 1),
-    #     (0.9, 1.5, 0.1),
-    #     (0.8, 1.5, 0.1),
-    # ]
-    os.makedirs(f"{OUTPUT_DIR}/product", exist_ok=True)
-    os.makedirs(f"{OUTPUT_DIR}/1", exist_ok=True)
-    os.makedirs(f"{OUTPUT_DIR}/2", exist_ok=True)
-    os.makedirs(f"{OUTPUT_DIR}/3", exist_ok=True)
-
-    for i in frange(*(matrix[0])):
-        data.copy().hsv(i, 1, 1).write(f"{OUTPUT_DIR}/1/{get_name(i)}.png")
-
-    for i in frange(*(matrix[1])):
-        data.copy().hsv(0, i, 1).write(f"{OUTPUT_DIR}/2/{get_name(i)}.png")
-
-    for i in frange(*(matrix[2])):
-        data.copy().hsv(0, 1, i).write(f"{OUTPUT_DIR}/3/{get_name(i)}.png")
-
-    pro = [matrix[0][0], matrix[0][1]], [matrix[1][0], matrix[1][1]], [matrix[2][0], matrix[2][1]]
-    for i, ii, iii in product(*pro):
-        data.copy().hsv(i, ii, iii).write(f"{OUTPUT_DIR}/product/{get_name(i)}_{get_name(ii)}_{get_name(iii)}.png")
+    fig, axs = plt.subplots(5, 5, figsize=(10, 10))
+    for ax, iii in zip(axs, frange2(5, 0.5, 1.5)):
+        for ax, ii in zip(ax, frange2(5, 0.5, 1.5)):
+            img = cv2.cvtColor(data.copy().hsv(0, ii, iii).value, cv2.COLOR_BGRA2RGBA)
+            ax.imshow(img)
+            ax.axis("off")
+            ax.set_title(f"h: 0 s: {ii} v: {iii}")
+        fig.suptitle(f"hsv_{iii}.png")
+        fig.tight_layout()
+        fig.savefig(f"{OUTPUT_DIR}/hsv_{iii}.png")

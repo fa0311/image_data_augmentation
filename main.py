@@ -6,9 +6,11 @@ import shutil
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+import cv2
 from tqdm import tqdm
 
 from lib.annotate import annotate
+from lib.noise import NoiseImage
 from lib.processor import ImageProcessor
 
 OUTPUT_DIR = "output"
@@ -32,7 +34,7 @@ def data_augmentation(base: ImageProcessor, count: int) -> list[ImageProcessor]:
         data = base.copy()
         data.rotate(random.randint(0, 360))
         data.flip(random.randint(-1, 1))
-        data.hsv(random.randint(-5, 5), random.uniform(0.9, 1.5), random.uniform(0.8, 1.5))
+        data.hsv(random.randint(-5, 5), random.uniform(0.8, 1.2), random.uniform(0.8, 1.2))
         res.append(data)
     return res
 
@@ -64,7 +66,12 @@ def process_file(args):
     base_data = ImageProcessor.from_path_without_base(file)
     augmentation = data_augmentation(base_data, OUTPUT_COUNT)
     for i, data in enumerate(augmentation):
-        random_resize(data.remove_noise(), OUTPUT_SIZE).set_base_color(ramdom_color())
+        data = random_resize(data.remove_noise(), OUTPUT_SIZE)
+        if random.random() < 0.9:
+            noise = NoiseImage().generate(N=512, count=5)
+            data.set_base(cv2.cvtColor(noise.astype("uint8"), cv2.COLOR_BGR2BGRA))
+        else:
+            data.set_base_color(ramdom_color())
         annotate_file(data, label, f"{filename}_{i}")
     return [f"{filename}_{i}" for i in range(OUTPUT_COUNT)]
 
