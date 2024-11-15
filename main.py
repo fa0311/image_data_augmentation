@@ -39,12 +39,11 @@ def data_augmentation(base: ImageProcessor, count: int) -> list[ImageProcessor]:
     return res
 
 
-def random_resize(base: ImageProcessor, size: int) -> ImageProcessor:
+def random_resize(base: ImageProcessor, size: int, value_size: int) -> ImageProcessor:
     base.trim(*base.get_border_size())
 
     source_x, source_y = base.get_size()
-    rand_size = random.randint(50, size - 50)
-    base.resize_axis_x(rand_size) if source_x > source_y else base.resize_axis_y(rand_size)
+    base.resize_axis_x(value_size) if source_x > source_y else base.resize_axis_y(value_size)
 
     new_x, new_y = base.get_size()
     top_margin, right_margin = random.randint(1, size - new_y - 1), random.randint(1, size - new_x - 1)
@@ -66,7 +65,7 @@ def process_file(args):
     base_data = ImageProcessor.from_path_without_base(file)
     augmentation = data_augmentation(base_data, OUTPUT_COUNT)
     for i, data in enumerate(augmentation):
-        data = random_resize(data.remove_noise(), OUTPUT_SIZE)
+        data = random_resize(data.remove_noise(), OUTPUT_SIZE, random.randint(50, OUTPUT_SIZE - 50))
         if random.random() < 0.9:
             noise = NoiseImage().generate(N=512, count=5)
             data.set_base(cv2.cvtColor(noise.astype("uint8"), cv2.COLOR_BGR2BGRA))
@@ -86,9 +85,10 @@ def annotate_file(data: ImageProcessor, label: str, filename: str):
 
 if __name__ == "__main__":
     with open("input.json") as f:
-        load: dict[str, dict[str, str]] = json.load(f)
-    input = {k: v["input"] for k, v in load.items()}
-    original = {k: v["original"] for k, v in load.items()}
+        load = json.load(f)
+
+    input = {k: v["input"] for k, v in load["input"].items()}
+    original = {k: v["original"] for k, v in load["input"].items()}
 
     ignore = {label: random.sample(glob.glob(path), 5) for label, path in input.items()}
 
@@ -116,6 +116,8 @@ if __name__ == "__main__":
         for label in input.keys():
             f.write(f"{label}\n")
 
+    background = glob.glob(load["test"])
+
     Path(IMAGESET_TEST_FILES).touch(exist_ok=True)
     with open(IMAGESET_TEST_FILES, "w") as f:
         for label, dir in ignore.items():
@@ -124,13 +126,29 @@ if __name__ == "__main__":
                 filename, ext = os.path.splitext(os.path.basename(file))
                 base = [x for x in files if x.stem.lower() == filename.lower()][0]
                 data = ImageProcessor.from_path_base(file, str(base))
-                source_x, source_y = data.get_size()
-                data.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else data.resize_axis_y(OUTPUT_SIZE, True)
-                data.square(base=True)
-
                 copy = data.copy()
-                copy.set_base(cv2.cvtColor(NoiseImage().generate(N=512, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
-                copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
+                source_x, source_y = copy.get_size()
+                copy.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else copy.resize_axis_y(OUTPUT_SIZE, True)
+                copy.square(base=True)
+                copy2 = copy.copy()
+                copy2.set_base(cv2.cvtColor(NoiseImage().generate(N=512, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
+                copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_base{OUTPUT_EXT}")
+                copy2.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
+
+                back = ImageProcessor.from_path(random.choice(background))
+                data = ImageProcessor.from_path(file)
+                back_source_x, back_source_y = back.get_size()
+                back.resize_axis_x(OUTPUT_SIZE) if back_source_x < back_source_y else back.resize_axis_y(OUTPUT_SIZE)
+                x, y = back.get_size()
+                back.trim(
+                    (x - OUTPUT_SIZE) // 2,
+                    (y - OUTPUT_SIZE) // 2,
+                    (x + OUTPUT_SIZE) // 2,
+                    (y + OUTPUT_SIZE) // 2,
+                )
+                randsize = random.randint(OUTPUT_SIZE - 200, OUTPUT_SIZE - 50)
+                data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
+                data = data.set_base_value(back)
 
                 annotate_file(data, label, filename)
                 data.write(f"{OUTPUT_IGNORE}/{filename}{OUTPUT_EXT}")

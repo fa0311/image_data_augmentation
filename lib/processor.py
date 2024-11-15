@@ -59,6 +59,10 @@ class ImageProcessor:
         self.base = base
         return self
 
+    def set_base_value(self, base: "ImageProcessor") -> "ImageProcessor":
+        self.base = base.value
+        return self
+
     def marge(self, x: int, y: int, w: int, h: int, base: "ImageProcessor"):
         """現在の画像データと元画像データをマージする"""
         value = np.zeros_like(base.base)
