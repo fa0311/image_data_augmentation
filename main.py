@@ -16,7 +16,7 @@ from lib.processor import ImageProcessor
 OUTPUT_DIR = "output"
 OUTPUT_EXT = ".jpg"
 OUTPUT_SIZE = 512
-OUTPUT_COUNT = 4
+OUTPUT_COUNT = 8
 MAX_WORKERS = None
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
@@ -60,19 +60,25 @@ def flatten(data):
 
 
 def process_file(args):
-    file, label = args
+    file, label, orig = args
     filename, ext = os.path.splitext(os.path.basename(file))
     base_data = ImageProcessor.from_path_without_base(file)
     augmentation = data_augmentation(base_data, OUTPUT_COUNT)
     for i, data in enumerate(augmentation):
-        data = random_resize(data.remove_noise(), OUTPUT_SIZE, random.randint(50, OUTPUT_SIZE - 50))
+        data = random_resize(data.remove_noise(), OUTPUT_SIZE, random.randint(OUTPUT_SIZE - 200, OUTPUT_SIZE - 50))
         if random.random() < 0.9:
             noise = NoiseImage().generate(N=512, count=5)
             data.set_base(cv2.cvtColor(noise.astype("uint8"), cv2.COLOR_BGR2BGRA))
         else:
             data.set_base_color(ramdom_color())
         annotate_file(data, label, f"{filename}_{i}")
-    return [f"{filename}_{i}" for i in range(OUTPUT_COUNT)]
+
+    base = ImageProcessor.from_path_base(file, str(orig))
+    source_x, source_y = base.get_size()
+    base.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else base.resize_axis_y(OUTPUT_SIZE, True)
+    base.square(base=True)
+    annotate_file(base, label, f"{filename}_{OUTPUT_COUNT}")
+    return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + 1)]
 
 
 def annotate_file(data: ImageProcessor, label: str, filename: str):
@@ -101,8 +107,14 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IMAGESET, exist_ok=True)
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
-    file_list = [[(x, label) for x in glob.glob(path) if x not in ignore[label]] for label, path in input.items()]
+    originals = {label: [Path(x) for x in glob.glob(original[label])] for label in input.keys()}
+    def get_orig(label, path):
+        filename, ext = os.path.splitext(os.path.basename(path))
+        return [x for x in originals[label] if x.stem.lower() == filename.lower()][0]
+
+    file_list = [[(x, label,get_orig(label,x)) for x in glob.glob(path) if x not in ignore[label]] for label, path in input.items()]
     files = flatten(file_list)
+
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         output = list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
 
