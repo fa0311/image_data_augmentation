@@ -220,7 +220,7 @@ class ImageProcessor:
 
     def write(self, output_path: str) -> "ImageProcessor":
         """画像を保存する"""
-        cv2.imwrite(output_path, self.value)
+        cv2.imwrite(output_path, self.value, [cv2.IMWRITE_JPEG_QUALITY, 100])
         return self
 
     def show(self, block=True) -> "ImageProcessor":

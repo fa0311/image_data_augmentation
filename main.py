@@ -15,9 +15,10 @@ from lib.processor import ImageProcessor
 
 OUTPUT_DIR = "output"
 OUTPUT_EXT = ".jpg"
-OUTPUT_SIZE = 512
+OUTPUT_SIZE = 64
 OUTPUT_COUNT = 8
 MAX_WORKERS = None
+INCLUDE_BASE = False
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
 OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
@@ -65,20 +66,27 @@ def process_file(args):
     base_data = ImageProcessor.from_path_without_base(file)
     augmentation = data_augmentation(base_data, OUTPUT_COUNT)
     for i, data in enumerate(augmentation):
-        data = random_resize(data.remove_noise(), OUTPUT_SIZE, random.randint(OUTPUT_SIZE - 200, OUTPUT_SIZE - 50))
-        if random.random() < 0.9:
-            noise = NoiseImage().generate(N=512, count=5)
-            data.set_base(cv2.cvtColor(noise.astype("uint8"), cv2.COLOR_BGR2BGRA))
-        else:
+        randsize = random.randint(OUTPUT_SIZE // 4, (OUTPUT_SIZE - OUTPUT_SIZE // 4))
+        data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
+        rand = random.random()
+        if rand < 0.1:
             data.set_base_color(ramdom_color())
+        elif rand < 0.2:
+            data.set_base_color((255, 255, 255, 255))
+        else:
+            noise = NoiseImage().generate(N=OUTPUT_SIZE, count=5)
+            data.set_base(cv2.cvtColor(noise.astype("uint8"), cv2.COLOR_BGR2BGRA))
         annotate_file(data, label, f"{filename}_{i}")
 
-    base = ImageProcessor.from_path_base(file, str(orig))
-    source_x, source_y = base.get_size()
-    base.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else base.resize_axis_y(OUTPUT_SIZE, True)
-    base.square(base=True)
-    annotate_file(base, label, f"{filename}_{OUTPUT_COUNT}")
-    return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + 1)]
+    if  INCLUDE_BASE:
+        base = ImageProcessor.from_path_base(file, str(orig))
+        source_x, source_y = base.get_size()
+        base.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else base.resize_axis_y(OUTPUT_SIZE, True)
+        base.square(base=True)
+        annotate_file(base, label, f"{filename}_{OUTPUT_COUNT}")
+        return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + 1)]
+    else:
+        return [f"{filename}_{i}" for i in range(OUTPUT_COUNT)]
 
 
 def annotate_file(data: ImageProcessor, label: str, filename: str):
@@ -143,7 +151,7 @@ if __name__ == "__main__":
                 copy.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else copy.resize_axis_y(OUTPUT_SIZE, True)
                 copy.square(base=True)
                 copy2 = copy.copy()
-                copy2.set_base(cv2.cvtColor(NoiseImage().generate(N=512, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
+                copy2.set_base(cv2.cvtColor(NoiseImage().generate(N=OUTPUT_SIZE, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
                 copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_base{OUTPUT_EXT}")
                 copy2.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
 
@@ -158,7 +166,7 @@ if __name__ == "__main__":
                     (x + OUTPUT_SIZE) // 2,
                     (y + OUTPUT_SIZE) // 2,
                 )
-                randsize = random.randint(OUTPUT_SIZE - 200, OUTPUT_SIZE - 50)
+                randsize = random.randint(OUTPUT_SIZE // 4, (OUTPUT_SIZE - OUTPUT_SIZE // 4))
                 data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
                 data = data.set_base_value(back)
 
