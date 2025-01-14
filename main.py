@@ -15,7 +15,7 @@ from lib.processor import ImageProcessor
 
 OUTPUT_DIR = "output"
 OUTPUT_EXT = ".jpg"
-OUTPUT_SIZE = 64
+OUTPUT_SIZE = 512
 OUTPUT_COUNT = 8
 MAX_WORKERS = None
 INCLUDE_BASE = False
@@ -78,7 +78,7 @@ def process_file(args):
             data.set_base(cv2.cvtColor(noise.astype("uint8"), cv2.COLOR_BGR2BGRA))
         annotate_file(data, label, f"{filename}_{i}")
 
-    if  INCLUDE_BASE:
+    if INCLUDE_BASE:
         base = ImageProcessor.from_path_base(file, str(orig))
         source_x, source_y = base.get_size()
         base.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else base.resize_axis_y(OUTPUT_SIZE, True)
@@ -101,10 +101,24 @@ if __name__ == "__main__":
     with open("input.json") as f:
         load = json.load(f)
 
-    input = {k: v["input"] for k, v in load["input"].items()}
-    original = {k: v["original"] for k, v in load["input"].items()}
+    input_image: dict[str, list[tuple[str, str]]] = {}
 
-    ignore = {label: random.sample(glob.glob(path), 5) for label, path in input.items()}
+    for label, data in load["input"].items():
+        input_image[label] = []
+        for x in data:
+            print(len(glob.glob(x["input"])), x["input"])
+            for path in glob.glob(x["input"]):
+                filename, ext = os.path.splitext(os.path.basename(path))
+                original = glob.glob(x["original"].format(label=label, filename=filename, ext=".*"))
+                if len(original) == 0:
+                    print(f"Original file not found for {path} {filename}")
+                elif len(original) > 1:
+                    print(f"Multiple original files found for {path} {filename}")
+                else:
+                    input_image[label].append((path, original[0]))
+
+    ignore_image = {label: random.sample(data, 5) for label, data in input_image.items()}
+    not_ignore_image = {label: [x for x in data if x not in ignore_image[label]] for label, data in input_image.items()}
 
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
@@ -115,12 +129,7 @@ if __name__ == "__main__":
     os.makedirs(OUTPUT_IMAGESET, exist_ok=True)
     os.makedirs(OUTPUT_IGNORE, exist_ok=True)
 
-    originals = {label: [Path(x) for x in glob.glob(original[label])] for label in input.keys()}
-    def get_orig(label, path):
-        filename, ext = os.path.splitext(os.path.basename(path))
-        return [x for x in originals[label] if x.stem.lower() == filename.lower()][0]
-
-    file_list = [[(x, label,get_orig(label,x)) for x in glob.glob(path) if x not in ignore[label]] for label, path in input.items()]
+    file_list = [[(x[0], label, x[1]) for x in data] for label, data in not_ignore_image.items()]
     files = flatten(file_list)
 
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -133,25 +142,25 @@ if __name__ == "__main__":
 
     Path(OUTPUT_LABELS).touch(exist_ok=True)
     with open(OUTPUT_LABELS, "w") as f:
-        for label in input.keys():
+        for label in not_ignore_image.keys():
             f.write(f"{label}\n")
 
     background = glob.glob(load["test"])
 
     Path(IMAGESET_TEST_FILES).touch(exist_ok=True)
     with open(IMAGESET_TEST_FILES, "w") as f:
-        for label, dir in ignore.items():
-            files = [Path(x) for x in glob.glob(original[label])]
-            for file in dir:
+        for label, path in ignore_image.items():
+            for file, original in path:
                 filename, ext = os.path.splitext(os.path.basename(file))
-                base = [x for x in files if x.stem.lower() == filename.lower()][0]
-                data = ImageProcessor.from_path_base(file, str(base))
+                data = ImageProcessor.from_path_base(file, original)
                 copy = data.copy()
                 source_x, source_y = copy.get_size()
                 copy.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else copy.resize_axis_y(OUTPUT_SIZE, True)
                 copy.square(base=True)
                 copy2 = copy.copy()
-                copy2.set_base(cv2.cvtColor(NoiseImage().generate(N=OUTPUT_SIZE, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
+                copy2.set_base(
+                    cv2.cvtColor(NoiseImage().generate(N=OUTPUT_SIZE, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA)
+                )
                 copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_base{OUTPUT_EXT}")
                 copy2.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
 
