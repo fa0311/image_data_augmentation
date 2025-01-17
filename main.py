@@ -19,8 +19,8 @@ OUTPUT_SIZE = 512
 OUTPUT_COUNT = 8
 MAX_WORKERS = None
 INCLUDE_BASE = True
-TEST_AUGMENTATION = True
-BASE_AUGMENTATION = True
+TEST_AUGMENTATION = 4
+BASE_AUGMENTATION = 4
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
 OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
@@ -109,10 +109,9 @@ def process_file(args):
             base.resize_axis_y(OUTPUT_SIZE, True)
 
         base.square(base=True)
-        loop = OUTPUT_COUNT if BASE_AUGMENTATION else 0
-        for i, data in enumerate([base, *data_augmentation2(base, loop)]):
+        for i, data in enumerate([base, *data_augmentation2(base, BASE_AUGMENTATION)]):
             annotate_file(data, label, f"{filename}_{i + OUTPUT_COUNT}")
-        return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + loop + 1)]
+        return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + BASE_AUGMENTATION + 1)]
     else:
         return [f"{filename}_{i}" for i in range(OUTPUT_COUNT)]
 
@@ -135,9 +134,8 @@ def process_file_test(args):
     copy2.write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
 
     data = ImageProcessor.from_path(file)
-    loop = OUTPUT_COUNT if TEST_AUGMENTATION else 0
 
-    for i, data in enumerate([data, *data_augmentation(data, loop)]):
+    for i, data in enumerate([data, *data_augmentation(data, TEST_AUGMENTATION)]):
         back = ImageProcessor.from_path(random.choice(background))
 
         back_source_x, back_source_y = back.get_size()
@@ -160,7 +158,7 @@ def process_file_test(args):
         annotate_file(data, label, f"{filename}_{i}")
         data.write(f"{OUTPUT_IGNORE}/{filename}_{i}{OUTPUT_EXT}")
 
-    return [*[f"{filename}_{i}" for i in range(loop)], f"{filename}_base", f"{filename}_noise"]
+    return [*[f"{filename}_{i}" for i in range(TEST_AUGMENTATION)], f"{filename}_base", f"{filename}_noise"]
 
 
 def annotate_file(data: ImageProcessor, label: str, filename: str):
