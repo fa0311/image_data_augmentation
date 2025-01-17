@@ -112,7 +112,7 @@ if __name__ == "__main__":
     for label, data in load["input"].items():
         input_image[label] = []
         for x in data:
-            print(len(glob.glob(x["input"])), x["input"])
+            print(label, len(glob.glob(x["input"])), x["input"])
             for path in glob.glob(x["input"]):
                 filename, ext = os.path.splitext(os.path.basename(path))
                 original = glob.glob(x["original"].format(label=label, filename=filename, ext=".*"))
