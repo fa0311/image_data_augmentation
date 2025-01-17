@@ -191,6 +191,6 @@ if __name__ == "__main__":
                     data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
                     data = data.set_base_value(back)
 
-                    annotate_file(data, label, filename)
+                    annotate_file(data, label, f"{filename}_{i}")
                     data.write(f"{OUTPUT_IGNORE}/{filename}_{i}{OUTPUT_EXT}")
                     f.write(f"{filename}_{i}\n")
