@@ -44,7 +44,10 @@ def random_resize(base: ImageProcessor, size: int, value_size: int) -> ImageProc
     base.trim(*base.get_border_size())
 
     source_x, source_y = base.get_size()
-    base.resize_axis_x(value_size) if source_x > source_y else base.resize_axis_y(value_size)
+    if source_x > source_y:
+        base.resize_axis_x(value_size)
+    else:
+        base.resize_axis_y(value_size)
 
     new_x, new_y = base.get_size()
     top_margin, right_margin = random.randint(1, size - new_y - 1), random.randint(1, size - new_x - 1)
@@ -81,7 +84,10 @@ def process_file(args):
     if INCLUDE_BASE:
         base = ImageProcessor.from_path_base(file, str(orig))
         source_x, source_y = base.get_size()
-        base.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else base.resize_axis_y(OUTPUT_SIZE, True)
+        if source_x > source_y:
+            base.resize_axis_x(OUTPUT_SIZE, True)
+        else:
+            base.resize_axis_y(OUTPUT_SIZE, True)
         base.square(base=True)
         annotate_file(base, label, f"{filename}_{OUTPUT_COUNT}")
         return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + 1)]
@@ -131,7 +137,6 @@ if __name__ == "__main__":
 
     file_list = [[(x[0], label, x[1]) for x in data] for label, data in not_ignore_image.items()]
     files = flatten(file_list)
-
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         output = list(tqdm(executor.map(process_file, files), total=len(files), desc="Files", leave=False))
 
@@ -164,21 +169,28 @@ if __name__ == "__main__":
                 copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_base{OUTPUT_EXT}")
                 copy2.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
 
-                back = ImageProcessor.from_path(random.choice(background))
                 data = ImageProcessor.from_path(file)
-                back_source_x, back_source_y = back.get_size()
-                back.resize_axis_x(OUTPUT_SIZE) if back_source_x < back_source_y else back.resize_axis_y(OUTPUT_SIZE)
-                x, y = back.get_size()
-                back.trim(
-                    (x - OUTPUT_SIZE) // 2,
-                    (y - OUTPUT_SIZE) // 2,
-                    (x + OUTPUT_SIZE) // 2,
-                    (y + OUTPUT_SIZE) // 2,
-                )
-                randsize = random.randint(OUTPUT_SIZE // 4, (OUTPUT_SIZE - OUTPUT_SIZE // 4))
-                data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
-                data = data.set_base_value(back)
 
-                annotate_file(data, label, filename)
-                data.write(f"{OUTPUT_IGNORE}/{filename}{OUTPUT_EXT}")
-                f.write(f"{filename}\n")
+                for i, data in enumerate([data, *data_augmentation(data, OUTPUT_COUNT)]):
+                    back = ImageProcessor.from_path(random.choice(background))
+
+                    back_source_x, back_source_y = back.get_size()
+                    if back_source_x < back_source_y:
+                        back.resize_axis_x(OUTPUT_SIZE)
+                    else:
+                        back.resize_axis_y(OUTPUT_SIZE)
+
+                    x, y = back.get_size()
+                    back.trim(
+                        (x - OUTPUT_SIZE) // 2,
+                        (y - OUTPUT_SIZE) // 2,
+                        (x + OUTPUT_SIZE) // 2,
+                        (y + OUTPUT_SIZE) // 2,
+                    )
+                    randsize = random.randint(OUTPUT_SIZE // 4, (OUTPUT_SIZE - OUTPUT_SIZE // 4))
+                    data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
+                    data = data.set_base_value(back)
+
+                    annotate_file(data, label, filename)
+                    data.write(f"{OUTPUT_IGNORE}/{filename}_{i}{OUTPUT_EXT}")
+                    f.write(f"{filename}_{i}\n")
