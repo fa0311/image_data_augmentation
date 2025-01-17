@@ -18,7 +18,9 @@ OUTPUT_EXT = ".jpg"
 OUTPUT_SIZE = 512
 OUTPUT_COUNT = 8
 MAX_WORKERS = None
-INCLUDE_BASE = False
+INCLUDE_BASE = True
+TEST_AUGMENTATION = True
+BASE_AUGMENTATION = True
 
 OUTPUT_JPEG = f"{OUTPUT_DIR}/JPEGImages"
 OUTPUT_ANNOTATION = f"{OUTPUT_DIR}/Annotations"
@@ -37,6 +39,23 @@ def data_augmentation(base: ImageProcessor, count: int) -> list[ImageProcessor]:
         data.flip(random.randint(-1, 1))
         data.hsv(random.randint(-5, 5), random.uniform(0.8, 1.2), random.uniform(0.8, 1.2))
         res.append(data)
+    return res
+
+
+def data_augmentation2(base: ImageProcessor, count: int) -> list[ImageProcessor]:
+    res = []
+    for i in range(count):
+        data1 = base.copy()
+        data2 = base.copy().paste()
+
+        rotate = random.randint(0, 360)
+        data1.rotate(rotate)
+        data2.rotate(rotate)
+        flip = random.randint(-1, 1)
+        data1.flip(flip)
+        data2.flip(flip)
+        data1.hsv(random.randint(-5, 5), random.uniform(0.8, 1.2), random.uniform(0.8, 1.2))
+        res.append(data1.set_base_value(data2.set()))
     return res
 
 
@@ -88,11 +107,60 @@ def process_file(args):
             base.resize_axis_x(OUTPUT_SIZE, True)
         else:
             base.resize_axis_y(OUTPUT_SIZE, True)
+
         base.square(base=True)
-        annotate_file(base, label, f"{filename}_{OUTPUT_COUNT}")
-        return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + 1)]
+        loop = OUTPUT_COUNT if BASE_AUGMENTATION else 0
+        for i, data in enumerate([base, *data_augmentation2(base, loop)]):
+            annotate_file(data, label, f"{filename}_{i + OUTPUT_COUNT}")
+        return [f"{filename}_{i}" for i in range(OUTPUT_COUNT + loop + 1)]
     else:
         return [f"{filename}_{i}" for i in range(OUTPUT_COUNT)]
+
+
+def process_file_test(args):
+    file, label, original, background = args
+    filename, ext = os.path.splitext(os.path.basename(file))
+    data = ImageProcessor.from_path_base(file, original)
+    copy = data.copy()
+    source_x, source_y = copy.get_size()
+    copy.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else copy.resize_axis_y(OUTPUT_SIZE, True)
+    copy.square(base=True)
+    copy2 = copy.copy()
+    copy2.set_base(cv2.cvtColor(NoiseImage().generate(N=OUTPUT_SIZE, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA))
+
+    annotate_file(copy, label, f"{filename}_base")
+    copy.write(f"{OUTPUT_IGNORE}/{filename}_base{OUTPUT_EXT}")
+
+    annotate_file(copy2, label, f"{filename}_noise")
+    copy2.write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
+
+    data = ImageProcessor.from_path(file)
+    loop = OUTPUT_COUNT if TEST_AUGMENTATION else 0
+
+    for i, data in enumerate([data, *data_augmentation(data, loop)]):
+        back = ImageProcessor.from_path(random.choice(background))
+
+        back_source_x, back_source_y = back.get_size()
+        if back_source_x < back_source_y:
+            back.resize_axis_x(OUTPUT_SIZE)
+        else:
+            back.resize_axis_y(OUTPUT_SIZE)
+
+        x, y = back.get_size()
+        back.trim(
+            (x - OUTPUT_SIZE) // 2,
+            (y - OUTPUT_SIZE) // 2,
+            (x + OUTPUT_SIZE) // 2,
+            (y + OUTPUT_SIZE) // 2,
+        )
+        randsize = random.randint(OUTPUT_SIZE // 4, (OUTPUT_SIZE - OUTPUT_SIZE // 4))
+        data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
+        data = data.set_base_value(back)
+
+        annotate_file(data, label, f"{filename}_{i}")
+        data.write(f"{OUTPUT_IGNORE}/{filename}_{i}{OUTPUT_EXT}")
+
+    return [*[f"{filename}_{i}" for i in range(loop)], f"{filename}_base", f"{filename}_noise"]
 
 
 def annotate_file(data: ImageProcessor, label: str, filename: str):
@@ -109,6 +177,8 @@ if __name__ == "__main__":
 
     input_image: dict[str, list[tuple[str, str]]] = {}
 
+    filename_check = set()
+
     for label, data in load["input"].items():
         input_image[label] = []
         for x in data:
@@ -122,6 +192,10 @@ if __name__ == "__main__":
                     print(f"Multiple original files found for {path} {filename}")
                 else:
                     input_image[label].append((path, original[0]))
+
+                if filename in filename_check:
+                    print(f"Duplicate filename {filename}")
+                filename_check.add(filename)
 
     ignore_image = {label: random.sample(data, 5) for label, data in input_image.items()}
     not_ignore_image = {label: [x for x in data if x not in ignore_image[label]] for label, data in input_image.items()}
@@ -153,44 +227,14 @@ if __name__ == "__main__":
     background = glob.glob(load["test"])
 
     Path(IMAGESET_TEST_FILES).touch(exist_ok=True)
+    file_list = [[(x[0], label, x[1], background) for x in data] for label, data in ignore_image.items()]
+    files = flatten(file_list)
+
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        output = list(tqdm(executor.map(process_file_test, files), total=len(files), desc="Files", leave=False))
+
     with open(IMAGESET_TEST_FILES, "w") as f:
-        for label, path in ignore_image.items():
-            for file, original in path:
-                filename, ext = os.path.splitext(os.path.basename(file))
-                data = ImageProcessor.from_path_base(file, original)
-                copy = data.copy()
-                source_x, source_y = copy.get_size()
-                copy.resize_axis_x(OUTPUT_SIZE, True) if source_x > source_y else copy.resize_axis_y(OUTPUT_SIZE, True)
-                copy.square(base=True)
-                copy2 = copy.copy()
-                copy2.set_base(
-                    cv2.cvtColor(NoiseImage().generate(N=OUTPUT_SIZE, count=5).astype("uint8"), cv2.COLOR_BGR2BGRA)
-                )
-                copy.paste().write(f"{OUTPUT_IGNORE}/{filename}_base{OUTPUT_EXT}")
-                copy2.paste().write(f"{OUTPUT_IGNORE}/{filename}_noise{OUTPUT_EXT}")
-
-                data = ImageProcessor.from_path(file)
-
-                for i, data in enumerate([data, *data_augmentation(data, OUTPUT_COUNT)]):
-                    back = ImageProcessor.from_path(random.choice(background))
-
-                    back_source_x, back_source_y = back.get_size()
-                    if back_source_x < back_source_y:
-                        back.resize_axis_x(OUTPUT_SIZE)
-                    else:
-                        back.resize_axis_y(OUTPUT_SIZE)
-
-                    x, y = back.get_size()
-                    back.trim(
-                        (x - OUTPUT_SIZE) // 2,
-                        (y - OUTPUT_SIZE) // 2,
-                        (x + OUTPUT_SIZE) // 2,
-                        (y + OUTPUT_SIZE) // 2,
-                    )
-                    randsize = random.randint(OUTPUT_SIZE // 4, (OUTPUT_SIZE - OUTPUT_SIZE // 4))
-                    data = random_resize(data.remove_noise(), OUTPUT_SIZE, randsize)
-                    data = data.set_base_value(back)
-
-                    annotate_file(data, label, f"{filename}_{i}")
-                    data.write(f"{OUTPUT_IGNORE}/{filename}_{i}{OUTPUT_EXT}")
-                    f.write(f"{filename}_{i}\n")
+        for filename in flatten(output):
+            f.write(f"{filename}\n")
+            f.write(f"{filename}_base\n")
+            f.write(f"{filename}_noise\n")
