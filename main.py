@@ -234,5 +234,3 @@ if __name__ == "__main__":
     with open(IMAGESET_TEST_FILES, "w") as f:
         for filename in flatten(output):
             f.write(f"{filename}\n")
-            f.write(f"{filename}_base\n")
-            f.write(f"{filename}_noise\n")
